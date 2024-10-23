@@ -78,21 +78,24 @@ exports.createAccount = async (req, res) => {
 //function to login
 exports.login = async (req, res) => {
   try {
-    const { username, password } = req.body; // Destructuring username and password
+    const { username, email, password } = req.body;
     const { account } = req.params;
 
-    if (!password || !username) {
-      // Check if both username and password are provided
+    // Ensure that either username or email is provided, along with the password
+    if (!password || (!username && !email)) {
       return res
         .status(400)
-        .json({ message: "Please provide a username and password" });
+        .json({ message: "Please provide a username/email and password" });
     }
 
     if (account === "user") {
-      // Find user by username
-      const user = await User.findOne({ username });
+      // Find user by username or email
+      const user = await User.findOne({
+        $or: [{ username }, { email }], // Use $or to match either username or email
+      });
+
       if (!user) {
-        return res.status(401).json({ message: "Invalid credentials" }); // Username not found
+        return res.status(401).json({ message: "Invalid credentials" }); // User not found
       }
 
       // Check if password is correct
@@ -118,7 +121,7 @@ exports.login = async (req, res) => {
           token,
           userInfo: {
             _id: user._id,
-            username: user.username, // Use `username` instead of `name`
+            username: user.username,
             email: user.email,
           },
         },
