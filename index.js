@@ -17,6 +17,14 @@ const io = socketIo(server); // Initialize Socket.io
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173'); // Your frontend's origin
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,PUT,DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
+
+
 // Database connection
 db.on("error", (error) => console.log(error));
 db.once("open", () => console.log("connected to database"));
