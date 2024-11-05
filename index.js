@@ -16,9 +16,10 @@ const io = socketIo(server); // Initialize Socket.io
 
 app.use(
   cors({
-    origin: ["http://localhost:5173"], // Replace with your actual frontend Vercel URL
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true, // Enable if your app uses cookies
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   })
 );
 
