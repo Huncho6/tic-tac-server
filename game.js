@@ -1,70 +1,104 @@
-const games = {}; // Store game state for multiple game sessions
-
 module.exports = (io) => {
-  io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
+  let rooms = {}; // Room management
+  let connectedUsers = {}; // Track connected users
+  let currentPlayer = "X"; // Start with X
 
-    // Handle player joining a room
-    socket.on('join-room', (roomId) => {
+  io.on("connection", (socket) => {
+    console.log(`Socket connected: ${socket.id}`);
+
+    connectedUsers[socket.id] = { id: socket.id, name: null, room: null };
+    io.emit("update-users", connectedUsers);
+
+    connectedUsers[socket.id].role = currentPlayer;
+    socket.emit("playerRole", currentPlayer);
+    currentPlayer = currentPlayer === "X" ? "O" : "X";
+
+    socket.on("set-username", (name) => {
+      connectedUsers[socket.id].name = name;
+      io.emit("update-users", connectedUsers);
+    });
+
+    socket.on("invite-player", ({ to }) => {
+      if (connectedUsers[to]) {
+        io.to(to).emit("game-invitation", { from: socket.id });
+      }
+    });
+
+    socket.on("accept-invitation", ({ to }) => {
+      const roomId = `${socket.id}-${to}`;
       socket.join(roomId);
-      console.log(`User ${socket.id} joined room: ${roomId}`);
 
-      if (!games[roomId]) {
-        games[roomId] = {
-          board: Array(9).fill(""),
-          currentPlayer: 'X',
-          players: [socket.id],
-        };
+      const players = [socket.id, to];
+      rooms[roomId] = {
+        players,
+        board: Array(9).fill(""),
+        currentPlayer: "X",
+      };
+
+      io.to(to).emit("start-game", {
+        roomId,
+        opponent: socket.id,
+        role: "O",
+        currentPlayer: "X",
+      });
+
+      io.to(socket.id).emit("start-game", {
+        roomId,
+        opponent: to,
+        role: "X",
+        currentPlayer: "X",
+      });
+
+      console.log(`Game started in room ${roomId}`);
+    });
+
+    socket.on("make-move", ({ roomId, index, playerRole }) => {
+      const room = rooms[roomId];
+      if (!room) return;
+
+      if (room.board[index] === "" && room.currentPlayer === playerRole) {
+        room.board[index] = playerRole;
+        room.currentPlayer = playerRole === "X" ? "O" : "X";
+
+        io.to(roomId).emit("update-game", {
+          board: room.board,
+          currentPlayer: room.currentPlayer,
+        });
       } else {
-        games[roomId].players.push(socket.id);
-      }
-
-      // Notify all players in the room about the game state
-      io.to(roomId).emit('update-game', games[roomId]);
-    });
-
-    // Handle a move made by a player
-    socket.on('make-move', (data) => {
-      const { roomId, index } = data;
-      const game = games[roomId];
-
-      if (game && game.board[index] === "" && game.players.includes(socket.id)) {
-        // Update board and toggle turn
-        game.board[index] = game.currentPlayer;
-        game.currentPlayer = game.currentPlayer === 'X' ? 'O' : 'X';
-
-        // Emit the updated game state to all players in the room
-        io.to(roomId).emit('update-game', game);
+        socket.emit("invalid-move", { message: "Invalid move!" });
       }
     });
 
-    // Handle game restart
-    socket.on('restart-game', (roomId) => {
-      if (games[roomId]) {
-        games[roomId].board = Array(9).fill("");
-        games[roomId].currentPlayer = 'X';
-        io.to(roomId).emit('update-game', games[roomId]);
+    socket.on("restartGame", ({ roomId }) => {
+      const room = rooms[roomId];
+      if (room) {
+        room.board = Array(9).fill("");
+        room.currentPlayer = "X";
+        io.to(roomId).emit("update-game", {
+          board: room.board,
+          currentPlayer: room.currentPlayer,
+        });
       }
     });
 
-    // Handle player disconnect
-    socket.on('disconnect', () => {
-      console.log('A user disconnected:', socket.id);
+    socket.on("disconnect", () => {
+      const user = connectedUsers[socket.id];
+      if (user) {
+        delete connectedUsers[socket.id];
+        io.emit("update-users", connectedUsers);
+      }
 
-      // Find the room the player was in
-      for (const roomId in games) {
-        if (games[roomId].players.includes(socket.id)) {
-          // Remove player from the game session
-          games[roomId].players = games[roomId].players.filter(id => id !== socket.id);
-
-          // If no players left, delete the game session
-          if (games[roomId].players.length === 0) {
-            delete games[roomId];
-          } else {
-            // Notify remaining players about the disconnection
-            io.to(roomId).emit('player-disconnected', { playerId: socket.id });
-          }
-          break;
+      for (const roomId in rooms) {
+        const room = rooms[roomId];
+        if (room.players.includes(socket.id)) {
+          delete rooms[roomId];
+          room.players.forEach((playerId) => {
+            if (playerId !== socket.id) {
+              io.to(playerId).emit("player-disconnected", {
+                message: "Opponent left the game.",
+              });
+            }
+          });
         }
       }
     });

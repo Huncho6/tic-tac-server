@@ -1,6 +1,11 @@
 const { Router } = require("express");
 
-const { createAccount, login, userForgotPassword , userResetPassword } = require("../controllers/authcontroller");
+const {
+  createAccount,
+  login,
+  userForgotPassword,
+  userResetPassword,
+} = require("../controllers/authController");
 const router = Router();
 
 router.post("/auth/create-account/:account", createAccount); // Create account function
